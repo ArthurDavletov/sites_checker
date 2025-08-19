@@ -1,2 +1,2 @@
-# sites_tester
+# sites_checker
 Программа для тестирования http-сайтов (задание для стажировки Infotecs)
