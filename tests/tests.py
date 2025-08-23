@@ -56,7 +56,7 @@ class ArgsParserTestCase(unittest.TestCase):
             "https://[][][][][]",
             "test",
             "2025",
-            "https://google.com;https://yandex.ru",
+            "https:/202520252025.com",
             "http",
             ""
         ]
