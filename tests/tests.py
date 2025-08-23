@@ -1,3 +1,4 @@
+"""Tests of argument parser and bench.py."""
 import asyncio
 import io
 import shutil
@@ -5,39 +6,49 @@ import tempfile
 import unittest
 import pathlib
 from unittest.mock import patch, AsyncMock
+from argparse import ArgumentTypeError
 
 import aiohttp
-from argparse import ArgumentTypeError
 
 from args_parser import ArgsParser, validate_hosts, check_count, convert_input_file
 from bench import SitesChecker, main
 
 
 class ArgsParserTestCase(unittest.TestCase):
+    """Tests for ArgsParser."""
     def setUp(self):
+        """Set up test environment. Create necessary temporary files and directories."""
         self.parser = ArgsParser()
         self.temp_path = pathlib.Path(tempfile.mkdtemp())
         self.correct_hosts_file = pathlib.Path(self.temp_path / "hosts.txt")
         self.output_file = pathlib.Path(self.temp_path / "output.txt")
         self.correct_hosts = "https://yandex.ru,https://google.com,https://example.com/"
-        self.correct_hosts_file.write_text(self.correct_hosts.replace(",", "\n"), encoding = "utf-8")
+        self.correct_hosts_file.write_text(self.correct_hosts.replace(",", "\n"),
+                                           encoding="utf-8")
 
     def tearDown(self):
+        """Tear down test environment. Remove temporary files and directories."""
         shutil.rmtree(self.temp_path)
 
     def test_just_works(self):
+        """Just works test."""
         self.parser.parse_args(["-H", self.correct_hosts])
         # no raises
 
     def test_not_specified_count(self):
+        """Test when count isn't specified (default 1)."""
         namespace = self.parser.parse_args(["-H", self.correct_hosts])
         self.assertEqual(namespace.count, 1)
 
     def test_specified_count(self):
+        """Test when count is specified."""
         namespace = self.parser.parse_args(["-H", self.correct_hosts, "-C", "52"])
         self.assertEqual(namespace.count, 52)
 
     def test_different_names_of_args(self):
+        """Test different names of arguments:
+        -H --hosts, -C --count, -F --file, -O --output
+        """
         a = self.parser.parse_args(["-H", self.correct_hosts])
         b = self.parser.parse_args(["--hosts", self.correct_hosts])
         self.assertEqual(a.hosts, b.hosts)
@@ -52,6 +63,7 @@ class ArgsParserTestCase(unittest.TestCase):
         self.assertEqual(a.output, b.output)
 
     def test_incorrect_hosts(self):
+        """Test with incorrect hosts."""
         incorrect_hosts = [
             "https://[][][][][]",
             "test",
@@ -64,29 +76,49 @@ class ArgsParserTestCase(unittest.TestCase):
             self.assertRaises(ArgumentTypeError, validate_hosts, [host])
 
     def test_incorrect_count(self):
+        """Test with incorrect count values. (values must be positive integers)"""
         incorrect_count = ["0", "-1", "abc", "1.1", "0,0", "-1.1", "*", ""]
         for count in incorrect_count:
             self.assertRaises(ArgumentTypeError, check_count, count)
 
     @patch("sys.stderr", new_callable=io.StringIO)
-    def test_two_inputs(self, mock_stderr):
+    def test_two_inputs(self, _):
+        """Test with two input sources. There's must be exception."""
         with self.assertRaises(SystemExit) as error:
             self.parser.parse_args(["-H", self.correct_hosts, "-F", str(self.correct_hosts_file)])
         self.assertEqual(error.exception.code, 2)
 
     def test_correct_file_convert(self):
+        """Test with correct conversion from file to hosts."""
         # file and hosts are equal
         hosts = convert_input_file(str(self.correct_hosts_file))
         self.assertListEqual(hosts, self.correct_hosts.split(","))
 
 
 class BenchTestCase(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    """Tests for site_checker."""
+    def setUp(self) -> None:
+        """Set up test environment. Create necessary temporary files and directories."""
         self.temp_dir = pathlib.Path(tempfile.mkdtemp())
         self.output_file = self.temp_dir / "output.txt"
 
+    def tearDown(self) -> None:
+        """Tear down test environment. Remove temporary files and directories."""
+        shutil.rmtree(self.temp_dir)
+
     @staticmethod
-    def create_mock_get(status: int, delay: int | float = 0, raises: type[Exception] | None = None) -> AsyncMock:
+    def create_mock_get(status: int,
+                        delay: int | float = 0,
+                        raises: type[Exception] | None = None) -> AsyncMock:
+        """
+        Create a mock GET request.
+        
+        :param status: HTTP-status code
+        :param delay: Delay of the request's processing (in seconds)
+        :param raises: Exception to raise while requesting (if any)
+
+        :return: Mocked ClientResponse
+        """
         mock_response = AsyncMock(spec=aiohttp.ClientResponse)
         mock_response.status = status
         mock_response.ok = status < 400
@@ -102,6 +134,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("aiohttp.ClientSession.get")
     async def test_just_works(self, mock_get):
+        """Test successful GET request."""
         mock_get.return_value = self.__class__.create_mock_get(200)
         hosts = ["https://example.com"]
         sites_checker = SitesChecker(hosts = hosts, count = 1)
@@ -114,6 +147,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("aiohttp.ClientSession.get")
     async def test_server_error(self, mock_get):
+        """Test server error responses."""
         for e in (aiohttp.ClientError, aiohttp.ServerTimeoutError, aiohttp.ServerDisconnectedError):
             mock_get.return_value = self.__class__.create_mock_get(500, raises = e)
             hosts = ["https://verybadserver.error"]
@@ -127,6 +161,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("aiohttp.ClientSession.get")
     async def test_server_failed(self, mock_get):
+        """Test server failed responses (4xx or 5xx status codes)."""
         hosts = ["https://workingbadserver.fails"]
         for status in (404, 500, 502):
             mock_get.return_value = self.__class__.create_mock_get(status)
@@ -141,6 +176,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("aiohttp.ClientSession.get")
     @patch("sys.stdout", new_callable=io.StringIO)
     async def test_print(self, mock_stdout, mock_get):
+        """Test printing the results table to the console."""
         mock_get.return_value = self.__class__.create_mock_get(200)
         hosts = ["https://example.com"]
         sites_checker = SitesChecker(hosts = hosts, count = 2)
@@ -153,6 +189,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("aiohttp.ClientSession.get")
     async def test_file_output(self, mock_get):
+        """Test writing the results table to a file."""
         mock_get.return_value = self.__class__.create_mock_get(200)
         hosts = ["https://example.com"]
         sites_checker = SitesChecker(hosts = hosts, count = 2, output_file = str(self.output_file))
@@ -167,7 +204,8 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("aiohttp.ClientSession.get")
     @patch("sys.stdout", new_callable=io.StringIO)
     async def test_empty_results(self, mock_stdout, mock_get):
-        """This is impossible situation, because there's check for the hosts in args_parser"""
+        """Test empty results handling."""
+        # This is impossible situation, because there's check for the hosts in args_parser
         mock_get.return_value = self.__class__.create_mock_get(200)
         hosts = []
         sites_checker = SitesChecker(hosts = hosts, count = 1)
@@ -179,6 +217,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("aiohttp.ClientSession.get")
     @patch("sys.stdout", new_callable = io.StringIO)
     async def test_error_site(self, mock_stdout, mock_get):
+        """Test printing error sites table."""
         mock_get.return_value = self.__class__.create_mock_get(200, raises = aiohttp.ClientError)
         hosts = ["https://bad_site.com"]
         sites_checker = SitesChecker(hosts = hosts, count = 1)
@@ -192,6 +231,7 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("aiohttp.ClientSession.get")
     async def test_asyncio(self, mock_get):
+        """Test for asynchronous behavior."""
         mock_get.return_value = self.__class__.create_mock_get(200, 1)
         hosts = [f"https://example_{i}.com/" for i in range(1, 10)]
         sites_checker = SitesChecker(hosts = hosts, count = 5)
@@ -206,10 +246,10 @@ class BenchTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("sys.stdout", new_callable=io.StringIO)
     @patch("sys.argv", ["bench.py", "-H", "https://example.com"])
     async def test_working_from_console(self, mock_stdout, mock_get):
+        """Test working from console."""
         mock_get.return_value = self.__class__.create_mock_get(200)
         await main()
         output = mock_stdout.getvalue().strip()
         self.assertIn("example.com", output)
         self.assertIn("1", output)
         self.assertIn("0", output)
-

@@ -6,8 +6,8 @@ def check_count(value):
     """Checks for the non-negative integer. Raises ArgumentTypeError if not."""
     try:
         int_value = int(value)
-    except ValueError:
-        raise ArgumentTypeError(f'Argument "{value}" must be an integer.')
+    except ValueError as e:
+        raise ArgumentTypeError(f'Argument "{value}" must be an integer.') from e
     if int_value < 1:
         raise ArgumentTypeError(f'Argument "{value}" must be greater than 0.')
     return int_value
@@ -16,9 +16,12 @@ def check_count(value):
 def validate_hosts(hosts: list[str]) -> None:
     """Checks hosts for validity. Raises ArgumentTypeError if host is invalid."""
     for host in hosts:
-        parsed_host = urlparse(host)
-        if parsed_host.scheme not in ['http', 'https']:
-            raise ArgumentTypeError(f"{host} is not a valid host")
+        try:
+            parsed_host = urlparse(host)
+        except ValueError as e:
+            raise ArgumentTypeError(f'Argument "{host}" must be a valid URL.') from e
+        if parsed_host.scheme not in ['http', 'https'] or not parsed_host.netloc:
+            raise ArgumentTypeError(f'Argument "{host}" must be a valid URL.')
 
 
 def convert_hosts(hosts: str) -> list[str]:
