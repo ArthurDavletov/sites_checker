@@ -68,7 +68,8 @@ class ArgsParserTestCase(unittest.TestCase):
         for count in incorrect_count:
             self.assertRaises(ArgumentTypeError, check_count, count)
 
-    def test_two_inputs(self):
+    @patch("sys.stderr", new_callable=io.StringIO)
+    def test_two_inputs(self, mock_stderr):
         with self.assertRaises(SystemExit) as error:
             self.parser.parse_args(["-H", self.correct_hosts, "-F", str(self.correct_hosts_file)])
         self.assertEqual(error.exception.code, 2)
