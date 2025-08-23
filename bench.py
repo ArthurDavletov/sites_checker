@@ -2,7 +2,6 @@ import time
 import enum
 from typing import NamedTuple
 
-import requests
 import asyncio
 import aiohttp
 
@@ -57,19 +56,21 @@ class SitesChecker:
             "avg": 0
         }
         for result in results:
-            match result.status:
-                case ResultStatus.OK:
-                    info["min"] = min(info["min"], result.time)
-                    info["max"] = max(info["max"], result.time)
-                    info["avg"] = round(
-                        (info["success"] * info["avg"] + result.time) / (info["success"] + 1),
-                        3
-                    )
-                    info["success"] += 1
-                case ResultStatus.FAILED:
-                    info["failed"] += 1
-                case ResultStatus.ERROR:
-                    info["errors"] += 1
+            if result.status == ResultStatus.ERROR:
+                info["errors"] += 1
+                continue
+            info["min"] = min(info["min"], result.time)
+            info["max"] = max(info["max"], result.time)
+            info["avg"] = round(
+                (info["success"] * info["avg"] + result.time) / (info["success"] + 1),
+                3
+            )
+            if result.status == ResultStatus.OK:
+                info["success"] += 1
+            else:
+                info["failed"] += 1
+        if info["success"] == 0 and info["failed"] == 0:
+            info["avg"] = info["min"] = info["max"] = None
         return info
 
     async def start(self) -> None:

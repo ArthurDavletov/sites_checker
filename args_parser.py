@@ -1,4 +1,4 @@
-import re
+from urllib.parse import urlparse
 from argparse import ArgumentParser, ArgumentTypeError
 
 
@@ -15,9 +15,9 @@ def check_count(value):
 
 def validate_hosts(hosts: list[str]) -> None:
     """Checks hosts for validity. Raises ArgumentTypeError if host is invalid."""
-    pattern = re.compile(r"https?://([A-Za-z0-9-]+\.)+[A-Za-z]{2,6}")
     for host in hosts:
-        if not pattern.fullmatch(host):
+        parsed_host = urlparse(host)
+        if parsed_host.scheme not in ['http', 'https']:
             raise ArgumentTypeError(f"{host} is not a valid host")
 
 
@@ -68,8 +68,3 @@ class ArgsParser(ArgumentParser):
             "-O", "--output",
             help = "Output file to save the output. If not specified, the output is sent to the console.",
         )
-
-if __name__ == '__main__':
-    parser = ArgsParser()
-    args = parser.parse_args(["-C", "asd"])
-    print(args)
