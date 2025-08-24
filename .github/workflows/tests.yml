@@ -1,4 +1,4 @@
-name: Python Unittest
+name: Run tests
 
 on: [ push, pull_request ]
 
