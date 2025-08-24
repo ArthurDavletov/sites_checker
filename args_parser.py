@@ -1,8 +1,9 @@
 from urllib.parse import urlparse
+import os.path
 from argparse import ArgumentParser, ArgumentTypeError
 
 
-def check_count(value):
+def check_count(value) -> int:
     """Checks for the non-negative integer. Raises ArgumentTypeError if not."""
     try:
         int_value = int(value)
@@ -14,7 +15,8 @@ def check_count(value):
 
 
 def validate_hosts(hosts: list[str]) -> None:
-    """Checks hosts for validity. Raises ArgumentTypeError if host is invalid."""
+    """Checks hosts for validity.
+    Raises ArgumentTypeError if host is invalid."""
     for host in hosts:
         try:
             parsed_host = urlparse(host)
@@ -51,7 +53,7 @@ class ArgsParser(ArgumentParser):
         )
         self.add_argument(
             "-C", "--count",
-            help = "Count of requests.",
+            help = "Count of requests (default: 1).",
             type = check_count,
             default = 1
         )
@@ -59,15 +61,26 @@ class ArgsParser(ArgumentParser):
         input_group.add_argument(
             "-H", "--hosts",
             help = "List of hosts, separated by comma.",
-            type = convert_hosts
         )
         input_group.add_argument(
             "-F", "--file",
             help = "File with list of hosts, split into lines.",
-            type = convert_input_file,
-            dest = "hosts"
         )
         self.add_argument(
             "-O", "--output",
-            help = "Output file to save the output. If not specified, the output is sent to the console.",
+            help = "Output file to save the output. " \
+            "If not specified, the output is sent to the console.",
         )
+
+    def parse_args(self, *args, **kwargs):
+        """Parses arguments and returns them as a namespace."""
+        args = super().parse_args(*args, **kwargs)
+        if args.hosts:
+            args.hosts = convert_hosts(args.hosts)
+        elif args.file:
+            if not os.path.exists(args.file):
+                raise ArgumentTypeError(f'File "{args.file}" does not exist.')
+            if not os.path.isfile(args.file):
+                raise ArgumentTypeError(f'"{args.file}" is not a file.')
+            args.hosts = convert_input_file(args.file)
+        return args
