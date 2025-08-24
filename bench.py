@@ -3,6 +3,7 @@ File for checking the availability of multiple sites.
 
 Run python ./bench.py -h for help.
 """
+from argparse import ArgumentTypeError
 import time
 import enum
 from dataclasses import dataclass
@@ -175,7 +176,11 @@ class SitesChecker:
 async def main() -> None:
     """Main entry point."""
     parser = ArgsParser()
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except ArgumentTypeError as e:
+        print(f"Error: {e}")
+        return
     sites_checker = SitesChecker(
         hosts = args.hosts,
         count = args.count,
