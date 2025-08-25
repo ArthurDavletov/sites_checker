@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_run:
+    workflows: ["Run Tests"]
+    branches:
+      - main
+    types:
+      - completed
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build project (Linux)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          pyinstaller -F bench.py --distpath release/dist --workpath release/build --specpath release/spec --noconfirm
+
+      - name: Build project (Windows with UPX)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          choco install upx -y
+
+          $upxDir = 'C:\ProgramData\chocolatey\bin'
+
+          pyinstaller -F bench.py --distpath release/dist --workpath release/build --specpath release/spec --noconfirm --upx-dir $upxDir
+
+      - name: Prepare artifact (Linux)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/sites_checker
+
+          mv release/dist/* artifacts/sites_checker/ || true
+
+          if [ -f "artifacts/sites_checker/bench" ]; then
+            mv artifacts/sites_checker/bench artifacts/sites_checker/bench-linux || true
+          fi
+
+      - name: Prepare artifact (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'artifacts/sites_checker' | Out-Null
+
+          Get-ChildItem -Path 'release/dist' -Force -File | ForEach-Object {
+            try { Move-Item -Path $_.FullName -Destination 'artifacts/sites_checker' -Force -ErrorAction Stop } catch { }
+          }
+
+          $exe = Get-ChildItem -Path 'artifacts/sites_checker' -Filter 'bench.exe' -File -ErrorAction SilentlyContinue
+          if ($exe) { Rename-Item -Path $exe.FullName -NewName 'bench-windows.exe' -Force }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: artifacts/**
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
